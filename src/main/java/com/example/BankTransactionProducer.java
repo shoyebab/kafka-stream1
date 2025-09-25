@@ -1,13 +1,12 @@
 package com.example;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.model.JsonSerde;
 import com.example.model.BankTransaction;
-import lombok.SneakyThrows;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.LongSerializer;
-import org.apache.kafka.common.serialization.StringSerializer;
+
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -16,17 +15,16 @@ import java.util.Map;
 
 public class BankTransactionProducer {
 
-    public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
     public static void main(String[] args) {
-        KafkaProducer<Long, String> bankTransactionProducer =
+        // Create producer with Long key and BankTransaction value
+        KafkaProducer<Long, BankTransaction> bankTransactionProducer =
                 new KafkaProducer<>(Map.of(
                         ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:29092",
                         ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, LongSerializer.class,
-                        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
-                ));
+                        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerde.class.getName()
+                ), new LongSerializer(), new JsonSerde<>(BankTransaction.class).serializer());
 
-
+        // Sample transactions
         List<BankTransaction> data1 = List.of(
                 BankTransaction.builder()
                         .balanceId(1L)
@@ -66,26 +64,29 @@ public class BankTransactionProducer {
                         .time(new Date())
                         .amount(new BigDecimal(-500)).build()
         );
-        data1.stream()
-                .map(bankTransaction -> new ProducerRecord<>("bank-transactions", bankTransaction.getBalanceId(), toJson(bankTransaction)))
-                .forEach(record -> send(bankTransactionProducer, record));
 
+        // Send transactions
+        data1.forEach(bankTransaction ->
+                send(bankTransactionProducer,
+                        new ProducerRecord<>("bank-transactions", bankTransaction.getBalanceId(), bankTransaction)));
+
+        // Extra test transaction
         BankTransaction bankTransaction = BankTransaction.builder()
                 .balanceId(3L)
                 .time(new Date())
                 .amount(new BigDecimal(-10_000)).build();
 
-        send(bankTransactionProducer, new ProducerRecord<>("bank-transactions", bankTransaction.getBalanceId(), toJson(bankTransaction)));
+        send(bankTransactionProducer, new ProducerRecord<>("bank-transactions", bankTransaction.getBalanceId(), bankTransaction));
 
+        bankTransactionProducer.close();
     }
 
-    @SneakyThrows
-    private static void send(KafkaProducer<Long, String> bankTransactionProducer, ProducerRecord<Long, String> record) {
-        bankTransactionProducer.send(record).get();
-    }
-
-    @SneakyThrows
-    private static String toJson(BankTransaction bankTransaction) {
-        return OBJECT_MAPPER.writeValueAsString(bankTransaction);
+    private static void send(KafkaProducer<Long, BankTransaction> producer, ProducerRecord<Long, BankTransaction> record) {
+        try {
+            producer.send(record).get(); // synchronous for demo
+            System.out.printf("Sent transaction: %s%n", record.value());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
