@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka-streams-app
-          image: your-dockerhub-username/kafka-sb-streams:1.0
+          image: kafka-sb-streams:1.0
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
